@@ -5,21 +5,21 @@ import { Slider } from '@/components/ui/slider';
 
 // Типы персонажей с эмодзи оружия
 const CHARACTER_TYPES = [
-  { name: 'Мечник', weapon: '⚔️', defaultHP: 100, color: '#FFD700' },
-  { name: 'Лучник', weapon: '🏹', defaultHP: 90, color: '#8B4513' },
-  { name: 'Щитоносец', weapon: '🛡️', defaultHP: 120, color: '#C0C0C0' },
-  { name: 'Маг', weapon: '🔮', defaultHP: 80, color: '#9370DB' },
-  { name: 'Копейщик', weapon: '🗡️', defaultHP: 95, color: '#708090' },
-  { name: 'Косарь', weapon: '⚰️', defaultHP: 110, color: '#2F4F4F' },
-  { name: 'Молотобоец', weapon: '🔨', defaultHP: 115, color: '#B22222' },
-  { name: 'Топорщик', weapon: '🪓', defaultHP: 105, color: '#8B4513' },
-  { name: 'Кинжальщик', weapon: '🗡️', defaultHP: 85, color: '#FF4500' },
-  { name: 'Булавоносец', weapon: '⚔️', defaultHP: 100, color: '#DAA520' },
-  { name: 'Алебардист', weapon: '🗡️', defaultHP: 90, color: '#4682B4' },
-  { name: 'Трезубец', weapon: '🔱', defaultHP: 95, color: '#20B2AA' },
-  { name: 'Арбалетчик', weapon: '🎯', defaultHP: 88, color: '#CD853F' },
-  { name: 'Катанщик', weapon: '⚔️', defaultHP: 92, color: '#DC143C' },
-  { name: 'Берсерк', weapon: '⚡', defaultHP: 130, color: '#FF0000' }
+  { name: 'Мечник', weapon: '⚔️', defaultHP: 100, color: '#FFD700', attackRange: 40 },
+  { name: 'Лучник', weapon: '🏹', defaultHP: 90, color: '#8B4513', attackRange: 80 },
+  { name: 'Щитоносец', weapon: '🛡️', defaultHP: 120, color: '#C0C0C0', attackRange: 30 },
+  { name: 'Маг', weapon: '🔮', defaultHP: 80, color: '#9370DB', attackRange: 60 },
+  { name: 'Копейщик', weapon: '🗡️', defaultHP: 95, color: '#708090', attackRange: 50 },
+  { name: 'Косарь', weapon: '⚰️', defaultHP: 110, color: '#2F4F4F', attackRange: 45 },
+  { name: 'Молотобоец', weapon: '🔨', defaultHP: 115, color: '#B22222', attackRange: 35 },
+  { name: 'Топорщик', weapon: '🪓', defaultHP: 105, color: '#8B4513', attackRange: 40 },
+  { name: 'Кинжальщик', weapon: '🗡️', defaultHP: 85, color: '#FF4500', attackRange: 25 },
+  { name: 'Булавоносец', weapon: '⚔️', defaultHP: 100, color: '#DAA520', attackRange: 38 },
+  { name: 'Алебардист', weapon: '🗡️', defaultHP: 90, color: '#4682B4', attackRange: 55 },
+  { name: 'Трезубец', weapon: '🔱', defaultHP: 95, color: '#20B2AA', attackRange: 48 },
+  { name: 'Арбалетчик', weapon: '🎯', defaultHP: 88, color: '#CD853F', attackRange: 75 },
+  { name: 'Катанщик', weapon: '⚔️', defaultHP: 92, color: '#DC143C', attackRange: 42 },
+  { name: 'Берсерк', weapon: '⚡', defaultHP: 130, color: '#FF0000', attackRange: 50 }
 ];
 
 interface Character {
@@ -32,17 +32,29 @@ interface Character {
   isAlive: boolean;
 }
 
+interface FighterState {
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  isAttacking: boolean;
+  attackCooldown: number;
+  direction: number; // -1 влево, 1 вправо
+}
+
 interface BattleState {
   isActive: boolean;
   countdown: number;
   winner: Character | null;
   battleLog: string[];
-  fighter1Position: { x: number; y: number };
-  fighter2Position: { x: number; y: number };
-  fighter1Animation: string;
-  fighter2Animation: string;
+  fighter1: FighterState;
+  fighter2: FighterState;
   hitEffect: { show: boolean; x: number; y: number; type: string } | null;
 }
+
+const ARENA_WIDTH = 500;
+const ARENA_HEIGHT = 300;
+const FIGHTER_SIZE = 32;
 
 const Index = () => {
   const [characters, setCharacters] = useState<Character[]>(() =>
@@ -65,10 +77,24 @@ const Index = () => {
     countdown: 0,
     winner: null,
     battleLog: [],
-    fighter1Position: { x: 80, y: 150 },
-    fighter2Position: { x: 320, y: 150 },
-    fighter1Animation: 'idle',
-    fighter2Animation: 'idle',
+    fighter1: {
+      x: 80,
+      y: ARENA_HEIGHT / 2,
+      targetX: 80,
+      targetY: ARENA_HEIGHT / 2,
+      isAttacking: false,
+      attackCooldown: 0,
+      direction: 1
+    },
+    fighter2: {
+      x: ARENA_WIDTH - 80,
+      y: ARENA_HEIGHT / 2,
+      targetX: ARENA_WIDTH - 80,
+      targetY: ARENA_HEIGHT / 2,
+      isAttacking: false,
+      attackCooldown: 0,
+      direction: -1
+    },
     hitEffect: null
   });
 
@@ -110,6 +136,17 @@ const Index = () => {
     ));
   };
 
+  // Проверка расстояния между бойцами
+  const getDistance = (x1: number, y1: number, x2: number, y2: number) => {
+    return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+  };
+
+  // Проверка коллизии атаки с противником
+  const checkAttackCollision = (attacker: FighterState, target: FighterState, attackRange: number) => {
+    const distance = getDistance(attacker.x, attacker.y, target.x, target.y);
+    return distance <= attackRange && attacker.isAttacking;
+  };
+
   // Запуск битвы
   const startBattle = () => {
     if (selectedFighter1 === null || selectedFighter2 === null) return;
@@ -118,10 +155,24 @@ const Index = () => {
       ...prev, 
       countdown: 5, 
       battleLog: [],
-      fighter1Position: { x: 80, y: 150 },
-      fighter2Position: { x: 320, y: 150 },
-      fighter1Animation: 'idle',
-      fighter2Animation: 'idle',
+      fighter1: {
+        x: 80,
+        y: ARENA_HEIGHT / 2,
+        targetX: 80,
+        targetY: ARENA_HEIGHT / 2,
+        isAttacking: false,
+        attackCooldown: 0,
+        direction: 1
+      },
+      fighter2: {
+        x: ARENA_WIDTH - 80,
+        y: ARENA_HEIGHT / 2,
+        targetX: ARENA_WIDTH - 80,
+        targetY: ARENA_HEIGHT / 2,
+        isAttacking: false,
+        attackCooldown: 0,
+        direction: -1
+      },
       hitEffect: null
     }));
     
@@ -141,81 +192,127 @@ const Index = () => {
   // Основная логика битвы
   const startActualBattle = () => {
     battleIntervalRef.current = setInterval(() => {
-      setCharacters(prev => {
-        const f1 = prev[selectedFighter1!];
-        const f2 = prev[selectedFighter2!];
+      setBattleState(prevBattle => {
+        const f1Char = characters[selectedFighter1!];
+        const f2Char = characters[selectedFighter2!];
         
-        if (!f1.isAlive || !f2.isAlive) {
+        if (!f1Char.isAlive || !f2Char.isAlive) {
           clearInterval(battleIntervalRef.current!);
-          setBattleState(prevBattle => ({
+          return {
             ...prevBattle,
             isActive: false,
-            winner: f1.isAlive ? f1 : f2
-          }));
-          return prev;
+            winner: f1Char.isAlive ? f1Char : f2Char
+          };
         }
 
-        const newChars = [...prev];
+        let newF1 = { ...prevBattle.fighter1 };
+        let newF2 = { ...prevBattle.fighter2 };
+        let newBattleLog = [...prevBattle.battleLog];
+        let newHitEffect = prevBattle.hitEffect;
+
+        // Случайное движение по Y для разнообразия
+        if (Math.random() < 0.1) {
+          newF1.y = Math.max(50, Math.min(ARENA_HEIGHT - 50, newF1.y + (Math.random() - 0.5) * 20));
+          newF2.y = Math.max(50, Math.min(ARENA_HEIGHT - 50, newF2.y + (Math.random() - 0.5) * 20));
+        }
+
+        // Уменьшаем кулдауны атак
+        if (newF1.attackCooldown > 0) newF1.attackCooldown--;
+        if (newF2.attackCooldown > 0) newF2.attackCooldown--;
+
+        // Сброс атаки если кулдаун закончился
+        if (newF1.attackCooldown === 0) newF1.isAttacking = false;
+        if (newF2.attackCooldown === 0) newF2.isAttacking = false;
+
+        // ИИ движения и атак для Fighter 1
+        const distanceF1toF2 = getDistance(newF1.x, newF1.y, newF2.x, newF2.y);
+        
+        if (distanceF1toF2 > f1Char.type.attackRange + 10) {
+          // Двигаемся к противнику
+          const moveSpeed = f1Char.moveSpeed * 3;
+          if (newF1.x < newF2.x) {
+            newF1.x = Math.min(newF1.x + moveSpeed, newF2.x - f1Char.type.attackRange);
+            newF1.direction = 1;
+          } else {
+            newF1.x = Math.max(newF1.x - moveSpeed, newF2.x + f1Char.type.attackRange);
+            newF1.direction = -1;
+          }
+        } else if (newF1.attackCooldown === 0) {
+          // В радиусе атаки - атакуем
+          newF1.isAttacking = true;
+          newF1.attackCooldown = Math.max(10, 30 - f1Char.attackSpeed * 8);
+        }
+
+        // ИИ движения и атак для Fighter 2
+        const distanceF2toF1 = getDistance(newF2.x, newF2.y, newF1.x, newF1.y);
+        
+        if (distanceF2toF1 > f2Char.type.attackRange + 10) {
+          // Двигаемся к противнику
+          const moveSpeed = f2Char.moveSpeed * 3;
+          if (newF2.x > newF1.x) {
+            newF2.x = Math.max(newF2.x - moveSpeed, newF1.x + f2Char.type.attackRange);
+            newF2.direction = -1;
+          } else {
+            newF2.x = Math.min(newF2.x + moveSpeed, newF1.x - f2Char.type.attackRange);
+            newF2.direction = 1;
+          }
+        } else if (newF2.attackCooldown === 0) {
+          // В радиусе атаки - атакуем
+          newF2.isAttacking = true;
+          newF2.attackCooldown = Math.max(10, 30 - f2Char.attackSpeed * 8);
+        }
+
+        // Проверка попаданий
+        let damageDealt = false;
         
         // F1 атакует F2
-        if (Math.random() < f1.attackSpeed / 2) {
-          const damage = Math.floor(Math.random() * 20) + 10;
-          newChars[selectedFighter2!] = {
-            ...f2,
-            hp: Math.max(0, f2.hp - damage),
-            isAlive: f2.hp - damage > 0
-          };
+        if (checkAttackCollision(newF1, newF2, f1Char.type.attackRange)) {
+          const damage = Math.floor(Math.random() * 15) + 10;
+          setCharacters(prev => prev.map(char => 
+            char.id === selectedFighter2! 
+              ? { ...char, hp: Math.max(0, char.hp - damage), isAlive: char.hp - damage > 0 }
+              : char
+          ));
           
-          setBattleState(prevBattle => ({
-            ...prevBattle,
-            battleLog: [...prevBattle.battleLog, `${f1.type.name} наносит ${damage} урона ${f2.type.name}!`].slice(-5),
-            fighter1Animation: 'attack',
-            fighter2Animation: 'hit',
-            hitEffect: { show: true, x: prevBattle.fighter2Position.x, y: prevBattle.fighter2Position.y, type: '💥' }
-          }));
-          
-          // Сброс анимаций через время
-          setTimeout(() => {
-            setBattleState(prev => ({
-              ...prev,
-              fighter1Animation: 'idle',
-              fighter2Animation: 'idle',
-              hitEffect: null
-            }));
-          }, 600);
+          newBattleLog = [...newBattleLog, `${f1Char.type.name} наносит ${damage} урона ${f2Char.type.name}!`].slice(-5);
+          newHitEffect = { show: true, x: newF2.x, y: newF2.y, type: '💥' };
+          damageDealt = true;
         }
         
         // F2 атакует F1
-        if (Math.random() < f2.attackSpeed / 2 && newChars[selectedFighter2!].isAlive) {
-          const damage = Math.floor(Math.random() * 20) + 10;
-          newChars[selectedFighter1!] = {
-            ...f1,
-            hp: Math.max(0, f1.hp - damage),
-            isAlive: f1.hp - damage > 0
-          };
+        if (checkAttackCollision(newF2, newF1, f2Char.type.attackRange)) {
+          const damage = Math.floor(Math.random() * 15) + 10;
+          setCharacters(prev => prev.map(char => 
+            char.id === selectedFighter1! 
+              ? { ...char, hp: Math.max(0, char.hp - damage), isAlive: char.hp - damage > 0 }
+              : char
+          ));
           
-          setBattleState(prevBattle => ({
-            ...prevBattle,
-            battleLog: [...prevBattle.battleLog, `${f2.type.name} наносит ${damage} урона ${f1.type.name}!`].slice(-5),
-            fighter2Animation: 'attack',
-            fighter1Animation: 'hit',
-            hitEffect: { show: true, x: prevBattle.fighter1Position.x, y: prevBattle.fighter1Position.y, type: '💥' }
-          }));
-          
-          // Сброс анимаций через время
-          setTimeout(() => {
-            setBattleState(prev => ({
-              ...prev,
-              fighter1Animation: 'idle',
-              fighter2Animation: 'idle',
-              hitEffect: null
-            }));
-          }, 600);
+          newBattleLog = [...newBattleLog, `${f2Char.type.name} наносит ${damage} урона ${f1Char.type.name}!`].slice(-5);
+          newHitEffect = { show: true, x: newF1.x, y: newF1.y, type: '💥' };
+          damageDealt = true;
         }
-        
-        return newChars;
+
+        // Сброс эффекта попадания
+        if (damageDealt) {
+          setTimeout(() => {
+            setBattleState(prev => ({ ...prev, hitEffect: null }));
+          }, 400);
+        }
+
+        // Ограничиваем движение границами арены
+        newF1.x = Math.max(FIGHTER_SIZE, Math.min(ARENA_WIDTH - FIGHTER_SIZE, newF1.x));
+        newF2.x = Math.max(FIGHTER_SIZE, Math.min(ARENA_WIDTH - FIGHTER_SIZE, newF2.x));
+
+        return {
+          ...prevBattle,
+          fighter1: newF1,
+          fighter2: newF2,
+          battleLog: newBattleLog,
+          hitEffect: newHitEffect
+        };
       });
-    }, 800);
+    }, 100); // Более частое обновление для плавного движения
   };
 
   // Сброс битвы
@@ -228,10 +325,24 @@ const Index = () => {
       countdown: 0,
       winner: null,
       battleLog: [],
-      fighter1Position: { x: 80, y: 150 },
-      fighter2Position: { x: 320, y: 150 },
-      fighter1Animation: 'idle',
-      fighter2Animation: 'idle',
+      fighter1: {
+        x: 80,
+        y: ARENA_HEIGHT / 2,
+        targetX: 80,
+        targetY: ARENA_HEIGHT / 2,
+        isAttacking: false,
+        attackCooldown: 0,
+        direction: 1
+      },
+      fighter2: {
+        x: ARENA_WIDTH - 80,
+        y: ARENA_HEIGHT / 2,
+        targetX: ARENA_WIDTH - 80,
+        targetY: ARENA_HEIGHT / 2,
+        isAttacking: false,
+        attackCooldown: 0,
+        direction: -1
+      },
       hitEffect: null
     });
     
@@ -246,96 +357,91 @@ const Index = () => {
   // Компонент анимированного бойца
   const AnimatedFighter = ({ 
     character, 
-    position, 
-    animation, 
-    isLeft 
+    fighterState, 
+    isPlayer1 
   }: { 
     character: Character; 
-    position: { x: number; y: number }; 
-    animation: string; 
-    isLeft: boolean; 
+    fighterState: FighterState; 
+    isPlayer1: boolean; 
   }) => {
     const getAnimationTransform = () => {
-      switch (animation) {
-        case 'attack':
-          return isLeft ? 'translateX(20px) scale(1.1)' : 'translateX(-20px) scale(1.1)';
-        case 'hit':
-          return 'translateX(0px) scale(0.9)';
-        default:
-          return 'translateX(0px) scale(1)';
+      if (fighterState.isAttacking) {
+        return `scale(1.2) rotate(${fighterState.direction * 15}deg)`;
       }
+      return 'scale(1) rotate(0deg)';
     };
 
-    const getAnimationColor = () => {
-      if (animation === 'hit') return '#FF4444';
-      if (animation === 'attack') return '#FFFF44';
-      return character.type.color;
+    const getWeaponPosition = () => {
+      if (fighterState.isAttacking) {
+        return {
+          x: fighterState.direction * character.type.attackRange * 0.7,
+          y: -5
+        };
+      }
+      return {
+        x: fighterState.direction * 15,
+        y: 5
+      };
     };
+
+    const weaponPos = getWeaponPosition();
 
     return (
       <div
-        className="absolute transition-all duration-300 ease-in-out"
+        className="absolute transition-all duration-100 ease-out"
         style={{
-          left: position.x,
-          top: position.y,
-          transform: getAnimationTransform(),
+          left: fighterState.x - FIGHTER_SIZE / 2,
+          top: fighterState.y - FIGHTER_SIZE / 2,
         }}
       >
-        {/* Тело персонажа - кружок */}
+        {/* Тело персонажа */}
         <div
-          className="relative w-16 h-16 rounded-full border-4 border-black flex items-center justify-center transition-all duration-300"
+          className="relative w-8 h-8 rounded-full border-2 border-black flex items-center justify-center transition-all duration-100"
           style={{ 
-            backgroundColor: getAnimationColor(),
-            boxShadow: animation === 'attack' ? '0 0 20px #FFFF44' : animation === 'hit' ? '0 0 20px #FF4444' : 'none'
+            backgroundColor: character.type.color,
+            transform: getAnimationTransform(),
+            boxShadow: fighterState.isAttacking ? '0 0 15px currentColor' : 'none'
           }}
         >
-          {/* Оружие */}
-          <div className="text-2xl">{character.type.weapon}</div>
-          
           {/* Глаза */}
-          <div className="absolute top-2 left-3 w-2 h-2 bg-black rounded-full"></div>
-          <div className="absolute top-2 right-3 w-2 h-2 bg-black rounded-full"></div>
-          
-          {/* Руки */}
           <div 
-            className="absolute w-6 h-2 bg-current rounded-full transition-all duration-300"
-            style={{ 
-              left: isLeft ? (animation === 'attack' ? '60px' : '45px') : (animation === 'attack' ? '-30px' : '-15px'),
-              top: '20px', 
-              backgroundColor: character.type.color,
-              transform: animation === 'attack' ? 'rotate(45deg)' : 'rotate(0deg)'
-            }}
+            className="absolute top-1 w-1 h-1 bg-black rounded-full"
+            style={{ left: fighterState.direction > 0 ? '8px' : '20px' }}
           />
           <div 
-            className="absolute w-6 h-2 bg-current rounded-full"
-            style={{ 
-              left: isLeft ? '-15px' : '45px',
-              top: '25px', 
-              backgroundColor: character.type.color 
-            }}
-          />
-          
-          {/* Ноги */}
-          <div 
-            className="absolute w-2 h-8 bg-current rounded-full"
-            style={{ 
-              left: '20px',
-              top: '50px', 
-              backgroundColor: character.type.color 
-            }}
-          />
-          <div 
-            className="absolute w-2 h-8 bg-current rounded-full"
-            style={{ 
-              right: '20px',
-              top: '50px', 
-              backgroundColor: character.type.color 
-            }}
+            className="absolute top-1 w-1 h-1 bg-black rounded-full"
+            style={{ left: fighterState.direction > 0 ? '18px' : '10px' }}
           />
         </div>
         
+        {/* Оружие */}
+        <div
+          className="absolute text-lg transition-all duration-100"
+          style={{
+            left: weaponPos.x,
+            top: weaponPos.y,
+            transform: fighterState.isAttacking ? 'scale(1.5)' : 'scale(1)',
+            filter: fighterState.isAttacking ? 'drop-shadow(0 0 5px #ffff00)' : 'none'
+          }}
+        >
+          {character.type.weapon}
+        </div>
+        
+        {/* Радиус атаки (показывается только при атаке) */}
+        {fighterState.isAttacking && (
+          <div
+            className="absolute border-2 border-red-500 rounded-full opacity-30"
+            style={{
+              width: character.type.attackRange * 2,
+              height: character.type.attackRange * 2,
+              left: -character.type.attackRange + FIGHTER_SIZE / 2,
+              top: -character.type.attackRange + FIGHTER_SIZE / 2,
+            }}
+          />
+        )}
+        
         {/* HP бар над головой */}
-        <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 w-20">
+        <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 w-16">
           <div className="text-xs text-white text-center mb-1 font-bold">{character.type.name}</div>
           <div className="w-full h-2 bg-gray-700 rounded border border-black">
             <div 
@@ -361,10 +467,13 @@ const Index = () => {
 
       {/* Боевая арена */}
       {(selectedFighter1 !== null && selectedFighter2 !== null) && (
-        <div className="max-w-2xl mx-auto mb-8">
+        <div className="max-w-4xl mx-auto mb-8">
           <div 
-            className="relative w-full h-80 bg-gray-800 border-4 border-yellow-600 rounded-lg overflow-hidden"
+            className="relative bg-gray-800 border-4 border-yellow-600 rounded-lg overflow-hidden"
             style={{ 
+              width: ARENA_WIDTH,
+              height: ARENA_HEIGHT,
+              margin: '0 auto',
               backgroundImage: 'radial-gradient(circle at 25% 25%, #333 2px, transparent 2px), radial-gradient(circle at 75% 75%, #333 2px, transparent 2px)',
               backgroundSize: '20px 20px'
             }}
@@ -375,15 +484,13 @@ const Index = () => {
             {/* Бойцы */}
             <AnimatedFighter 
               character={characters[selectedFighter1]} 
-              position={battleState.fighter1Position}
-              animation={battleState.fighter1Animation}
-              isLeft={true}
+              fighterState={battleState.fighter1}
+              isPlayer1={true}
             />
             <AnimatedFighter 
               character={characters[selectedFighter2]} 
-              position={battleState.fighter2Position}
-              animation={battleState.fighter2Animation}
-              isLeft={false}
+              fighterState={battleState.fighter2}
+              isPlayer1={false}
             />
             
             {/* Эффект попадания */}
@@ -391,8 +498,8 @@ const Index = () => {
               <div
                 className="absolute text-4xl animate-ping"
                 style={{
-                  left: battleState.hitEffect.x + 30,
-                  top: battleState.hitEffect.y + 30,
+                  left: battleState.hitEffect.x,
+                  top: battleState.hitEffect.y,
                 }}
               >
                 {battleState.hitEffect.type}
@@ -558,6 +665,7 @@ const Index = () => {
       {/* Инструкции */}
       <div className="mt-8 text-center text-sm text-gray-400">
         <p>ЛКМ - выбор бойца | ПКМ - настройки персонажа</p>
+        <p className="mt-2 text-yellow-500">Бойцы движутся автоматически и атакуют при касании оружием!</p>
       </div>
     </div>
   );
